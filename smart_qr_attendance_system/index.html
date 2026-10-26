@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>نظام الحضور الذكي بررمز الاستجابة السريعة</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+</head>
+<body class="bg-gray-50 min-h-screen font-sans">
+    <!-- Header -->
+    <header class="bg-indigo-600 text-white shadow-md py-4 px-6 mb-6">
+        <div class="container mx-auto flex justify-between items-center">
+            <h1 class="text-xl font-bold">نظام الحضور الذكي (Smart QR Attendance)</h1>
+            <div id="connection-status" class="bg-emerald-500 text-xs px-3 py-1 rounded-full">جاري فحص السيرفر...</div>
+        </div>
+    </header>
+
+    <main class="container mx-auto px-4 pb-12">
+        <!-- Tabs -->
+        <div class="flex justify-center mb-8 gap-4">
+            <button onclick="switchTab('instructor')" id="btn-instructor" class="px-6 py-2 bg-indigo-600 text-white rounded-lg shadow font-medium transition">لوحة المحاضر</button>
+            <button onclick="switchTab('student')" id="btn-student" class="px-6 py-2 bg-white text-indigo-600 border border-indigo-300 rounded-lg shadow font-medium transition">بوابة الطالب</button>
+        </div>
+
+        <!-- Instructor Section -->
+        <div id="section-instructor" class="space-y-6">
+            <div class="bg-white p-6 rounded-xl shadow-md">
+                <h2 class="text-lg font-bold text-gray-800 mb-4">1. رفع سجل الطلاب (Bulk Import)</h2>
+                <p class="text-sm text-gray-600 mb-4">أدخل بيانات الطلاب بصيغة JSON لرفعها دفعة واحدة إلى الخادم.</p>
+                <textarea id="students-json" rows="4" class="w-full p-3 border rounded-lg font-mono text-sm mb-4" placeholder='[{"name": "محمد علي", "email": "mohamed@example.com", "department": "علوم حاسب", "academic_year": "الثالثة"}]'></textarea>
+                <button onclick="uploadStudents()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-medium">رفع الطلاب للخادم</button>
+                <div id="import-result" class="mt-3 text-sm"></div>
+            </div>
+
+            <div class="bg-white p-6 rounded-xl shadow-md">
+                <h2 class="text-lg font-bold text-gray-800 mb-4">2. توليد جلسة QR للمحاضرة</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    <input type="text" id="session-id-input" placeholder="معرف الجلسة (Session ID)" class="p-3 border rounded-lg">
+                    <button onclick="generateQR()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg font-medium">عرض رمز QR</button>
+                </div>
+                <div id="qrcode-container" class="flex justify-center my-4"></div>
+            </div>
+
+            <div class="bg-white p-6 rounded-xl shadow-md">
+                <h2 class="text-lg font-bold text-gray-800 mb-4">3. تصدير تقرير الحضور (Excel / CSV)</h2>
+                <div class="flex gap-4">
+                    <input type="text" id="report-session-id" placeholder="أدخل معرف الجلسة (Session ID)" class="p-3 border rounded-lg flex-1">
+                    <button onclick="exportCSV()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium">تنزيل التقرير</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Student Section -->
+        <div id="section-student" class="space-y-6 hidden">
+            <div class="bg-white p-6 rounded-xl shadow-md max-w-xl mx-auto">
+                <h2 class="text-lg font-bold text-gray-800 mb-4 text-center">تسجيل الحضور</h2>
+                <div class="space-y-4">
+                    <input type="text" id="scan-student-id" placeholder="معرف الطالب (Student UUID)" class="w-full p-3 border rounded-lg">
+                    <input type="text" id="scan-session-id" placeholder="معرف الجلسة (Session ID)" class="w-full p-3 border rounded-lg">
+                    <button onclick="submitAttendance()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-lg font-bold">تسجيل الحضور</button>
+                    <div id="scan-result" class="text-center font-medium"></div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        const API_URL = "https://qrsuluq.onrender.com";
+
+        // فحص الاتصال بالسيرفر عند التحميل
+        fetch(API_URL)
+            .then(res => res.json())
+            .then(data => {
+                document.getElementById('connection-status').innerText = "متصل بالسيرفر بنجاح";
+            })
+            .catch(err => {
+                document.getElementById('connection-status').className = "bg-red-500 text-xs px-3 py-1 rounded-full text-white";
+                document.getElementById('connection-status').innerText = "فشل الاتصال بالسيرفر";
+            });
+
+        function switchTab(tab) {
+            if(tab === 'instructor') {
+                document.getElementById('section-instructor').classList.remove('hidden');
+                document.getElementById('section-student').classList.add('hidden');
+                document.getElementById('btn-instructor').className = "px-6 py-2 bg-indigo-600 text-white rounded-lg shadow font-medium transition";
+                document.getElementById('btn-student').className = "px-6 py-2 bg-white text-indigo-600 border border-indigo-300 rounded-lg shadow font-medium transition";
+            } else {
+                document.getElementById('section-student').classList.remove('hidden');
+                document.getElementById('section-instructor').classList.add('hidden');
+                document.getElementById('btn-student').className = "px-6 py-2 bg-indigo-600 text-white rounded-lg shadow font-medium transition";
+                document.getElementById('btn-instructor').className = "px-6 py-2 bg-white text-indigo-600 border border-indigo-300 rounded-lg shadow font-medium transition";
+            }
+        }
+
+        async function uploadStudents() {
+            const jsonText = document.getElementById('students-json').value;
+            const resultDiv = document.getElementById('import-result');
+            try {
+                const students = JSON.parse(jsonText);
+                const res = await fetch(`${API_URL}/api/users/bulk-import`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ students })
+                });
+                const data = await res.json();
+                if(res.ok) {
+                    resultDiv.innerHTML = `<span class="text-green-600">${data.message} (العدد: ${data.count})</span>`;
+                } else {
+                    resultDiv.innerHTML = `<span class="text-red-600">خطأ: ${data.error}</span>`;
+                }
+            } catch(e) {
+                resultDiv.innerHTML = `<span class="text-red-600">صيغة JSON غير صحيحة</span>`;
+            }
+        }
+
+        function generateQR() {
+            const sessionId = document.getElementById('session-id-input').value;
+            const container = document.getElementById('qrcode-container');
+            container.innerHTML = "";
+            if(!sessionId) return alert("أدخل معرف الجلسة أولاً");
+            new QRCode(container, {
+                text: sessionId,
+                width: 200,
+                height: 200
+            });
+        }
+
+        function exportCSV() {
+            const sessionId = document.getElementById('report-session-id').value;
+            if(!sessionId) return alert("أدخل معرف الجلسة");
+            window.open(`${API_URL}/api/reports/session/${sessionId}/csv`, '_blank');
+        }
+
+        async function submitAttendance() {
+            const student_id = document.getElementById('scan-student-id').value;
+            const session_id = document.getElementById('scan-session-id').value;
+            const resultDiv = document.getElementById('scan-result');
+
+            if(!student_id || !session_id) return alert("الرجاء إدخال بيانات الطالب والجلسة");
+
+            const res = await fetch(`${API_URL}/api/attendance/scan`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ student_id, session_id })
+            });
+            const data = await res.json();
+            if(res.ok) {
+                resultDiv.innerHTML = `<span class="text-green-600">${data.message}</span>`;
+            } else {
+                resultDiv.innerHTML = `<span class="text-red-600">${data.error}</span>`;
+            }
+        }
+    </script>
+</body>
+</html>
