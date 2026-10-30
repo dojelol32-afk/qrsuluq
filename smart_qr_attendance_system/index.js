@@ -28,6 +28,19 @@ app.get('/', (req, res) => {
 // ==========================================
 // 1. مسار رفع سجل الطلاب دفعة واحدة (Bulk Import)
 // ==========================================
+// استجابة GET إرشادية لتجنب خطأ المتصفح
+app.get('/api/users/bulk-import', (req, res) => {
+  res.json({ 
+    info: "هذا المسار مخصص لرفع بيانات الطلاب ويستقبل طلبات من نوع POST.",
+    method: "POST",
+    example_body: {
+      students: [
+        { name: "محمد علي", email: "mohamed@example.com", department: "علوم حاسب", academic_year: "الثالثة" }
+      ]
+    }
+  });
+});
+
 app.post('/api/users/bulk-import', async (req, res) => {
   try {
     const { students } = req.body;
@@ -54,6 +67,18 @@ app.post('/api/users/bulk-import', async (req, res) => {
 // ==========================================
 // 2. مسار تسجيل الحضور الفعلي عبر مسح الرمز (QR Scan)
 // ==========================================
+// استجابة GET إرشادية لتجنب خطأ المتصفح
+app.get('/api/attendance/scan', (req, res) => {
+  res.json({ 
+    info: "هذا المسار مخصص لتسجيل الحضور ويستقبل طلبات من نوع POST.",
+    method: "POST",
+    example_body: {
+      student_id: "UUID-خاص-بالطالب",
+      session_id: "UUID-الجلسة"
+    }
+  });
+});
+
 app.post('/api/attendance/scan', async (req, res) => {
   try {
     const { student_id, session_id } = req.body;
