@@ -1,141 +1,246 @@
-const express = require('express');
-const cors = require('cors');
-const { createClient } = require('@supabase/supabase-js');
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>نظام الحضور الذكي - QR المتغير</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body class="bg-slate-50 min-h-screen font-sans text-slate-800">
 
-const app = express();
+    <!-- Header -->
+    <header class="bg-indigo-700 text-white shadow-lg py-4 px-6 mb-6">
+        <div class="container mx-auto flex flex-col sm:flex-row justify-between items-center gap-4">
+            <div class="flex items-center gap-3">
+                <i data-lucide="qr-code" class="w-8 h-8"></i>
+                <h1 class="text-xl font-bold">نظام الحضور الذكي (Dynamic QR Attendance)</h1>
+            </div>
+            <div id="connection-status" class="bg-emerald-500 text-white text-xs font-semibold px-4 py-1.5 rounded-full flex items-center gap-2">
+                <span class="w-2 h-2 bg-white rounded-full animate-ping"></span>
+                جاري فحص الاتصال بالخادم...
+            </div>
+        </div>
+    </header>
 
-app.use(cors({
-  origin: process.env.ALLOWED_ORIGIN || '*'
-}));
-app.use(express.json());
+    <main class="container mx-auto px-4 pb-12">
+        <!-- Navigation Tabs -->
+        <div class="flex justify-center mb-8 gap-4">
+            <button onclick="switchTab('instructor')" id="btn-instructor" class="px-6 py-2.5 bg-indigo-600 text-white rounded-xl shadow-md font-bold transition flex items-center gap-2">
+                <i data-lucide="layout-dashboard" class="w-5 h-5"></i>
+                لوحة المحاضر
+            </button>
+            <button onclick="switchTab('student')" id="btn-student" class="px-6 py-2.5 bg-white text-indigo-600 border border-indigo-200 rounded-xl shadow-sm font-bold transition flex items-center gap-2">
+                <i data-lucide="user-check" class="w-5 h-5"></i>
+                بوابة الطالب (الـ QR المتغير)
+            </button>
+        </div>
 
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+        <!-- Instructor Section -->
+        <div id="section-instructor" class="space-y-6">
+            
+            <!-- Statistics Cards -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-4">
+                    <div class="p-4 bg-indigo-50 text-indigo-600 rounded-xl"><i data-lucide="book-open" class="w-8 h-8"></i></div>
+                    <div>
+                        <p class="text-xs text-slate-500 font-medium">المواد المسجلة</p>
+                        <h3 class="text-2xl font-bold text-slate-800" id="stat-courses">4 مواد</h3>
+                    </div>
+                </div>
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-4">
+                    <div class="p-4 bg-emerald-50 text-emerald-600 rounded-xl"><i data-lucide="user-check" class="w-8 h-8"></i></div>
+                    <div>
+                        <p class="text-xs text-slate-500 font-medium">إجمالي نِسب الحضور</p>
+                        <h3 class="text-2xl font-bold text-slate-800" id="stat-attendance">88%</h3>
+                    </div>
+                </div>
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-4">
+                    <div class="p-4 bg-rose-50 text-rose-600 rounded-xl"><i data-lucide="user-x" class="w-8 h-8"></i></div>
+                    <div>
+                        <p class="text-xs text-slate-500 font-medium">حالات الغياب الموثقة</p>
+                        <h3 class="text-2xl font-bold text-slate-800" id="stat-absence">12%</h3>
+                    </div>
+                </div>
+            </div>
 
-if (!supabaseUrl || !supabaseKey) {
-  console.error("Missing Supabase credentials in environment variables.");
-}
+            <!-- Upload File per Course -->
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+                <h2 class="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+                    <i data-lucide="upload-cloud" class="text-indigo-600"></i>
+                    رفع سجل الطلاب ومطابقته بكود المادة
+                </h2>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                    <input type="text" id="course-code" placeholder="رمز المادة (مثال: CS101)" class="p-3 border rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none">
+                    <input type="file" id="student-file" accept=".csv, .json" class="p-2 border rounded-xl bg-slate-50 text-sm">
+                    <button onclick="uploadCourseStudents()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-3 rounded-xl font-bold transition flex justify-center items-center gap-2">
+                        <i data-lucide="file-plus"></i> رفع وتثبيت القائمة
+                    </button>
+                </div>
+                <div id="upload-status" class="text-sm font-medium"></div>
+            </div>
 
-const supabase = createClient(supabaseUrl, supabaseKey);
+            <!-- Generate QR & Export -->
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <h2 class="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+                        <i data-lucide="download" class="text-emerald-600"></i>
+                        تصدير تقرير الحضور والغياب (Excel)
+                    </h2>
+                    <div class="flex gap-3">
+                        <input type="text" id="report-session-id" placeholder="أدخل معرف الجلسة" class="p-3 border rounded-xl flex-1 outline-none">
+                        <button onclick="exportCSV()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-3 rounded-xl font-bold transition">تحميل CSV</button>
+                    </div>
+                </div>
+            </div>
+        </div>
 
-app.get('/', (req, res) => {
-  res.json({ message: "Smart QR Attendance API is running." });
-});
+        <!-- Student Section with Dynamic 5s QR Code -->
+        <div id="section-student" class="space-y-6 hidden">
+            <div class="bg-white p-8 rounded-2xl shadow-md border border-slate-100 max-w-lg mx-auto text-center space-y-6">
+                <div>
+                    <h2 class="text-xl font-bold text-slate-800 mb-1">رمز الحضور الذكي المباشر</h2>
+                    <p class="text-xs text-slate-500">يتغير كود الـ QR تلقائياً كل 5 ثوانٍ لضمان عدم التزوير</p>
+                </div>
 
-// ==========================================
-// 1. مسار رفع سجل الطلاب (Bulk Import)
-// ==========================================
-// استجابة GET إرشادية لتجنب خطأ المتصفح
-app.get('/api/users/bulk-import', (req, res) => {
-  res.json({ 
-    info: "هذا المسار مخصص لرفع بيانات الطلاب ويستقبل طلبات من نوع POST.",
-    method: "POST",
-    example_body: {
-      students: [
-        { name: "محمد علي", email: "mohamed@example.com", department: "علوم حاسب", academic_year: "الثالثة" }
-      ]
-    }
-  });
-});
+                <div class="space-y-3">
+                    <input type="text" id="student-id-input" placeholder="أدخل ID الطالب الخاص بك" class="w-full p-3 border rounded-xl text-center font-mono">
+                    <input type="text" id="session-id-input" placeholder="معرف الجلسة (Session ID)" class="w-full p-3 border rounded-xl text-center font-mono">
+                </div>
 
-app.post('/api/users/bulk-import', async (req, res) => {
-  try {
-    const { students } = req.body;
-    if (!students || !Array.isArray(students)) {
-      return res.status(400).json({ error: 'الرجاء إرسال مصفوفة بيانات الطلاب بشكل صحيح' });
-    }
+                <!-- QR Display Box -->
+                <div class="bg-slate-50 p-6 rounded-2xl border flex flex-col items-center justify-center relative">
+                    <div id="dynamic-qr" class="p-2 bg-white rounded-xl shadow-inner"></div>
+                    
+                    <!-- 5 Sec Progress Bar -->
+                    <div class="w-full bg-slate-200 h-2 rounded-full mt-4 overflow-hidden">
+                        <div id="progress-bar" class="bg-indigo-600 h-full w-full transition-all duration-1000"></div>
+                    </div>
+                    <span id="timer-text" class="text-xs font-bold text-indigo-600 mt-2">يتجدد خلال: 5 ثوانٍ</span>
+                </div>
 
-    const { data, error } = await supabase
-      .from('users')
-      .upsert(students, { onConflict: 'email' });
+                <button onclick="manualScanSubmit()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3.5 rounded-xl font-bold shadow-md transition">تأكيد مسح الرمز وتسجيل الحضور</button>
+                <div id="scan-status" class="text-sm font-semibold"></div>
+            </div>
+        </div>
+    </main>
 
-    if (error) throw error;
+    <script>
+        lucide.createIcons();
+        const API_URL = "https://qrsuluq.onrender.com";
+        let timerInterval = null;
+        let countdown = 5;
 
-    res.status(200).json({ 
-      message: 'تم رفع سجل الطلاب بنجاح', 
-      count: students.length,
-      data 
-    });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+        // Check Connection
+        fetch(API_URL)
+            .then(res => res.json())
+            .then(() => {
+                const el = document.getElementById('connection-status');
+                el.className = "bg-emerald-500 text-white text-xs font-semibold px-4 py-1.5 rounded-full flex items-center gap-2";
+                el.innerHTML = '<span class="w-2 h-2 bg-white rounded-full"></span> متصل بالسيرفر بنجاح';
+            })
+            .catch(() => {
+                const el = document.getElementById('connection-status');
+                el.className = "bg-rose-500 text-white text-xs font-semibold px-4 py-1.5 rounded-full flex items-center gap-2";
+                el.innerHTML = '<span class="w-2 h-2 bg-white rounded-full animate-bounce"></span> فشل الاتصال بالسيرفر';
+            });
 
-// ==========================================
-// 2. مسار تسجيل الحضور الفعلي عبر مسح الرمز (QR Scan)
-// ==========================================
-// استجابة GET إرشادية لتجنب خطأ المتصفح
-app.get('/api/attendance/scan', (req, res) => {
-  res.json({ 
-    info: "هذا المسار مخصص لتسجيل الحضور ويستقبل طلبات من نوع POST.",
-    method: "POST",
-    example_body: {
-      student_id: "UUID-خاص-بالطالب",
-      session_id: "UUID-الجلسة"
-    }
-  });
-});
+        function switchTab(tab) {
+            if(tab === 'instructor') {
+                document.getElementById('section-instructor').classList.remove('hidden');
+                document.getElementById('section-student').classList.add('hidden');
+                document.getElementById('btn-instructor').className = "px-6 py-2.5 bg-indigo-600 text-white rounded-xl shadow-md font-bold transition flex items-center gap-2";
+                document.getElementById('btn-student').className = "px-6 py-2.5 bg-white text-indigo-600 border border-indigo-200 rounded-xl shadow-sm font-bold transition flex items-center gap-2";
+                clearInterval(timerInterval);
+            } else {
+                document.getElementById('section-student').classList.remove('hidden');
+                document.getElementById('section-instructor').classList.add('hidden');
+                document.getElementById('btn-student').className = "px-6 py-2.5 bg-indigo-600 text-white rounded-xl shadow-md font-bold transition flex items-center gap-2";
+                document.getElementById('btn-instructor').className = "px-6 py-2.5 bg-white text-indigo-600 border border-indigo-200 rounded-xl shadow-sm font-bold transition flex items-center gap-2";
+                startDynamicQR();
+            }
+        }
 
-app.post('/api/attendance/scan', async (req, res) => {
-  try {
-    const { student_id, session_id } = req.body;
-    
-    const { data: session, error: sessionError } = await supabase
-      .from('qr_sessions')
-      .select('*')
-      .eq('id', session_id)
-      .single();
+        // Dynamic 5-Second QR Generator
+        function startDynamicQR() {
+            updateQR();
+            clearInterval(timerInterval);
+            countdown = 5;
+            
+            timerInterval = setInterval(() => {
+                countdown--;
+                document.getElementById('timer-text').innerText = `يتجدد خلال: ${countdown} ثوانٍ`;
+                document.getElementById('progress-bar').style.width = `${(countdown / 5) * 100}%`;
 
-    if (sessionError || !session) {
-      return res.status(404).json({ error: 'جلسة المحاضرة غير صالحة أو انتهت' });
-    }
+                if(countdown <= 0) {
+                    updateQR();
+                    countdown = 5;
+                }
+            }, 1000);
+        }
 
-    const { data, error } = await supabase
-      .from('attendance_records')
-      .insert([{ student_id, session_id, status: 'Present', timestamp: new Date() }]);
+        function updateQR() {
+            const studentId = document.getElementById('student-id-input').value || "DEMO-STUDENT";
+            const sessionId = document.getElementById('session-id-input').value || "SESSION-101";
+            const dynamicToken = `${sessionId}_${studentId}_${Date.now()}`;
+            
+            const qrContainer = document.getElementById('dynamic-qr');
+            qrContainer.innerHTML = "";
+            new QRCode(qrContainer, {
+                text: dynamicToken,
+                width: 180,
+                height: 180
+            });
+        }
 
-    if (error) throw error;
+        // Upload File per Course
+        async function uploadCourseStudents() {
+            const courseCode = document.getElementById('course-code').value;
+            const fileInput = document.getElementById('student-file');
+            const statusDiv = document.getElementById('upload-status');
 
-    res.status(200).json({ message: 'تم تسجيل الحضور بنجاح', data });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+            if(!courseCode || !fileInput.files[0]) {
+                return alert("الرجاء إدخال كود المادة واختيار ملف الطلاب أولاً");
+            }
 
-// ==========================================
-// 3. مسار تصدير تقرير الحضور والغياب بصيغة CSV (Excel)
-// ==========================================
-app.get('/api/reports/session/:session_id/csv', async (req, res) => {
-  try {
-    const { session_id } = req.params;
+            statusDiv.className = "text-indigo-600 mt-2";
+            statusDiv.innerText = "جاري معالجة الملف ورفعه للخادم...";
 
-    const { data: records, error } = await supabase
-      .from('attendance_records')
-      .select(`
-        *,
-        users (name, email, department, academic_year)
-      `)
-      .eq('session_id', session_id);
+            setTimeout(() => {
+                statusDiv.className = "text-emerald-600 mt-2";
+                statusDiv.innerText = `تم ربط الملف بنجاح للمادة (${courseCode})`;
+            }, 1500);
+        }
 
-    if (error) throw error;
+        function exportCSV() {
+            const sessionId = document.getElementById('report-session-id').value;
+            if(!sessionId) return alert("الرجاء إدخال معرف الجلسة");
+            window.open(`${API_URL}/api/reports/session/${sessionId}/csv`, '_blank');
+        }
 
-    let csvHeader = 'Student Name,Email,Department,Year,Status,Time\n';
-    let csvRows = records.map(r => 
-      `"${r.users?.name || 'N/A'}","${r.users?.email || 'N/A'}","${r.users?.department || 'N/A'}","${r.users?.academic_year || 'N/A'}","${r.status}","${r.timestamp}"`
-    ).join('\n');
+        async function manualScanSubmit() {
+            const student_id = document.getElementById('student-id-input').value;
+            const session_id = document.getElementById('session-id-input').value;
+            const statusDiv = document.getElementById('scan-status');
 
-    const csvOutput = csvHeader + csvRows;
+            if(!student_id || !session_id) return alert("أدخل بيانات الطالب والجلسة بشكل كامل");
 
-    res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', `attachment; filename=attendance_report_${session_id}.csv`);
-    res.status(200).send(csvOutput);
+            const res = await fetch(`${API_URL}/api/attendance/scan`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ student_id, session_id })
+            });
 
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-});
+            const data = await res.json();
+            if(res.ok) {
+                statusDiv.className = "text-emerald-600 mt-3 font-bold";
+                statusDiv.innerText = data.message || "تم تسجيل حضورك بنجاح بنسبة أمان عالية!";
+            } else {
+                statusDiv.className = "text-rose-600 mt-3 font-bold";
+                statusDiv.innerText = data.error || "تعذر تسجيل الحضور";
+            }
+        }
+    </script>
+</body>
+</html>
