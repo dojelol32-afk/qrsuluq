@@ -1,33 +1,306 @@
-const supabase = require('./supabaseClient');
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>لوحة تحكم المحاضر - نظام الحضور الذكي</title>
+  <style>
+    * { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+    [hidden] { display: none !important; }
+    body { background-color: #f4f6f9; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 20px; }
+    .card { background: #ffffff; padding: 30px; border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.08); width: 100%; max-width: 500px; }
+    h2 { margin-top: 0; color: #333; font-size: 22px; text-align: center; }
+    p.subtitle { color: #777; font-size: 13px; margin-bottom: 25px; text-align: center; }
+    .input-group { margin-bottom: 15px; }
+    .input-group label { display: block; margin-bottom: 5px; font-weight: 600; font-size: 14px; color: #444; }
+    .input-group input, .input-group select { width: 100%; padding: 12px; border: 1px solid #ccc; border-radius: 8px; font-size: 15px; outline: none; background: #fff; }
+    .input-group input:focus, .input-group select:focus { border-color: #4f46e5; }
+    .row { display: flex; gap: 10px; }
+    .row .input-group { flex: 1; }
+    .btn { width: 100%; background: #4f46e5; color: white; border: none; padding: 14px; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; margin-top: 10px; }
+    .btn:hover { background: #4338ca; }
+    .btn:disabled { opacity: .6; cursor: not-allowed; }
+    .btn.green { background: #16a34a; }
+    .btn.green:hover { background: #15803d; }
+    .btn.red { background: #dc2626; }
+    .btn.red:hover { background: #b91c1c; }
+    .btn.secondary { background: #e5e7eb; color: #333; }
+    .btn.secondary:hover { background: #d1d5db; }
+    .message { margin-top: 15px; font-weight: bold; font-size: 14px; text-align: center; min-height: 20px; }
+    .message.success { color: #16a34a; }
+    .message.error { color: #dc2626; }
+    .qr-box { border: 1px solid #e5e7eb; border-radius: 12px; padding: 20px; margin: 15px 0; background: #fafafa; text-align: center; }
+    #qrcode { width: 220px; height: 220px; margin: 0 auto 15px auto; }
+    .progress-bg { width: 100%; background: #e5e7eb; height: 6px; border-radius: 3px; overflow: hidden; margin-bottom: 8px; }
+    .progress-fill { height: 100%; background: #4f46e5; width: 100%; }
+    .timer-text { font-size: 13px; color: #4f46e5; font-weight: 600; }
+    .session-title { text-align: center; font-weight: 700; color: #333; }
+    hr { margin: 20px 0; border: none; border-top: 1px solid #eee; }
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+</head>
+<body>
 
-exports.exportSessionReportCSV = async (req, res) => {
-    const { session_id } = req.params;
+<div class="card">
+  <h2>لوحة تحكم المحاضر</h2>
 
+  <!-- Login -->
+  <div id="loginView">
+    <p class="subtitle">سجّل الدخول لإدارة الجلسات وتقارير الحضور</p>
+    <div class="input-group">
+      <label>البريد الإلكتروني</label>
+      <input type="email" id="identifier" autocomplete="username">
+    </div>
+    <div class="input-group">
+      <label>كلمة المرور</label>
+      <input type="password" id="password" autocomplete="current-password">
+    </div>
+    <button class="btn" id="btnLogin">تسجيل الدخول</button>
+  </div>
+
+  <!-- Dashboard -->
+  <div id="dashView" hidden>
+    <p class="subtitle" id="whoAmI"></p>
+
+    <!-- Create session -->
+    <div id="createBox">
+      <div class="input-group">
+        <label>عنوان المحاضرة</label>
+        <input type="text" id="title" maxlength="100" placeholder="مثال: برمجة 1 - المحاضرة 5">
+      </div>
+      <div class="row">
+        <div class="input-group">
+          <label>مدة الجلسة (دقيقة)</label>
+          <input type="number" id="duration" value="60" min="1" max="240">
+        </div>
+        <div class="input-group">
+          <label>تجديد الرمز كل (ثانية)</label>
+          <select id="interval">
+            <option value="5">5</option>
+            <option value="10" selected>10</option>
+            <option value="15">15</option>
+            <option value="30">30</option>
+          </select>
+        </div>
+      </div>
+      <button class="btn" id="btnCreate">إنشاء وتفعيل الجلسة</button>
+    </div>
+
+    <!-- Live session -->
+    <div id="liveBox" hidden>
+      <div class="session-title" id="liveTitle"></div>
+      <div class="qr-box">
+        <div id="qrcode"></div>
+        <div class="progress-bg"><div class="progress-fill" id="progressFill"></div></div>
+        <div class="timer-text" id="timerText"></div>
+      </div>
+      <button class="btn green" id="btnDownload">تحميل تقرير الحضور (CSV)</button>
+      <button class="btn red" id="btnEnd">إنهاء الجلسة</button>
+    </div>
+
+    <button class="btn secondary" id="btnLogout">تسجيل الخروج</button>
+  </div>
+
+  <div id="messageBox" class="message"></div>
+</div>
+
+<script>
+  const API_BASE_URL = 'https://qrsuluq.onrender.com';
+  const $ = (id) => document.getElementById(id);
+
+  let jwtToken = sessionStorage.getItem('jwt');
+  let userName = sessionStorage.getItem('userName') || '';
+  let currentSession = null;   // { id, title }
+  let refreshTimer = null;
+  let progressTimer = null;
+  let intervalMs = 10000;
+  let expiresAt = 0;
+
+  function setMsg(text, type) {
+    const el = $('messageBox');
+    el.className = 'message' + (type ? ' ' + type : '');
+    el.textContent = text;
+  }
+
+  async function api(path, options = {}) {
+    const headers = { 'Content-Type': 'application/json' };
+    if (jwtToken) headers['Authorization'] = 'Bearer ' + jwtToken;
+    const res = await fetch(API_BASE_URL + path, { ...options, headers });
+    let data = {};
+    const isJson = (res.headers.get('content-type') || '').includes('application/json');
+    if (isJson) { try { data = await res.json(); } catch (e) { /* ignore */ } }
+    return { ok: res.ok, status: res.status, data, res };
+  }
+
+  function showDashboard() {
+    $('loginView').hidden = true;
+    $('dashView').hidden = false;
+    $('whoAmI').textContent = 'مرحباً ' + userName;
+  }
+
+  async function login() {
+    const identifier = $('identifier').value.trim();
+    const password = $('password').value;
+    if (!identifier || !password) { setMsg('أدخل البريد وكلمة المرور', 'error'); return; }
+
+    $('btnLogin').disabled = true;
+    setMsg('جاري تسجيل الدخول...');
     try {
-        const { data: records, error } = await supabase
-            .from('attendance_records')
-            .select(`
-                attendance_id,
-                status,
-                device_ip,
-                marked_at,
-                users (full_name, email, year_level, department)
-            `)
-            .eq('session_id', session_id);
-
-        if (error) throw error;
-
-        let csv = 'Attendance ID,Student Name,Email,Department,Year Level,Status,Device IP,Marked At\n';
-        records.forEach(r => {
-            const u = r.users || {};
-            csv += `"${r.attendance_id}","${u.full_name || ''}","${u.email || ''}","${u.department || ''}","${u.year_level || ''}","${r.status}","${r.device_ip}","${r.marked_at}"\n`;
-        });
-
-        res.setHeader('Content-Type', 'text/csv');
-        res.setHeader('Content-Disposition', `attachment; filename=attendance_report_${session_id}.csv`);
-        return res.status(200).send(csv);
-
-    } catch (error) {
-        return res.status(500).json({ error: error.message });
+      const { ok, data } = await api('/api/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ identifier, password })
+      });
+      if (!ok) { setMsg(data.error || 'فشل تسجيل الدخول', 'error'); return; }
+      if (!['Teacher', 'Admin'].includes(data.user.role)) {
+        setMsg('هذه الصفحة للمحاضرين فقط.', 'error');
+        return;
+      }
+      jwtToken = data.token;
+      userName = data.user.full_name;
+      sessionStorage.setItem('jwt', jwtToken);
+      sessionStorage.setItem('userName', userName);
+      $('password').value = '';
+      setMsg('');
+      showDashboard();
+    } catch (e) {
+      setMsg('فشل الاتصال بالسيرفر', 'error');
+    } finally {
+      $('btnLogin').disabled = false;
     }
-};
+  }
+
+  function logout() {
+    stopLive();
+    jwtToken = null;
+    sessionStorage.removeItem('jwt');
+    sessionStorage.removeItem('userName');
+    sessionStorage.removeItem('currentSession');
+    $('dashView').hidden = true;
+    $('loginView').hidden = false;
+  }
+
+  function drawQR(text) {
+    const el = $('qrcode');
+    el.innerHTML = '';
+    new QRCode(el, { text, width: 220, height: 220, correctLevel: QRCode.CorrectLevel.M });
+  }
+
+  function stopLive() {
+    clearTimeout(refreshTimer);
+    clearInterval(progressTimer);
+    currentSession = null;
+    sessionStorage.removeItem('currentSession');
+    $('liveBox').hidden = true;
+    $('createBox').hidden = false;
+    $('qrcode').innerHTML = '';
+  }
+
+  async function refreshToken() {
+    if (!currentSession) return;
+    clearTimeout(refreshTimer);
+    try {
+      const { ok, status, data } = await api(`/api/sessions/${currentSession.id}/token`);
+      if (status === 401) { logout(); setMsg('انتهت الجلسة، سجّل الدخول من جديد', 'error'); return; }
+      if (!ok) {
+        setMsg(data.error || 'تعذر تحديث الرمز', 'error');
+        if (status === 410 || status === 404 || status === 403) { stopLive(); return; }
+        refreshTimer = setTimeout(refreshToken, 3000);
+        return;
+      }
+      // The QR carries the session id and the current one-time token
+      drawQR(JSON.stringify({ s: currentSession.id, t: data.token }));
+      intervalMs = data.interval_seconds * 1000;
+      expiresAt = Date.now() + data.remaining_seconds * 1000;
+      refreshTimer = setTimeout(refreshToken, data.remaining_seconds * 1000 + 150);
+    } catch (e) {
+      setMsg('انقطع الاتصال، إعادة المحاولة...', 'error');
+      refreshTimer = setTimeout(refreshToken, 3000);
+    }
+  }
+
+  function startLive(session) {
+    currentSession = session;
+    sessionStorage.setItem('currentSession', JSON.stringify(session));
+    $('createBox').hidden = true;
+    $('liveBox').hidden = false;
+    $('liveTitle').textContent = session.title;
+
+    clearInterval(progressTimer);
+    progressTimer = setInterval(() => {
+      const left = Math.max(0, expiresAt - Date.now());
+      $('progressFill').style.width = (left / intervalMs * 100) + '%';
+      $('timerText').textContent = 'يتجدد خلال: ' + Math.ceil(left / 1000) + ' ثوان';
+    }, 200);
+
+    refreshToken();
+  }
+
+  async function createSession() {
+    $('btnCreate').disabled = true;
+    setMsg('جاري إنشاء الجلسة...');
+    try {
+      const { ok, status, data } = await api('/api/sessions', {
+        method: 'POST',
+        body: JSON.stringify({
+          title: $('title').value.trim(),
+          duration_minutes: Number($('duration').value),
+          interval_seconds: Number($('interval').value)
+        })
+      });
+      if (status === 401) { logout(); setMsg('انتهت الجلسة، سجّل الدخول من جديد', 'error'); return; }
+      if (!ok) { setMsg(data.error || 'فشل إنشاء الجلسة', 'error'); return; }
+      setMsg('تم تفعيل الجلسة. اعرض الرمز على الشاشة للطلاب.', 'success');
+      startLive({ id: data.session_id, title: data.title });
+    } catch (e) {
+      setMsg('فشل الاتصال بالسيرفر', 'error');
+    } finally {
+      $('btnCreate').disabled = false;
+    }
+  }
+
+  async function endSession() {
+    if (!currentSession) return;
+    if (!confirm('هل تريد إنهاء الجلسة؟ لن يتمكن الطلاب من التسجيل بعدها.')) return;
+    const { ok, data } = await api(`/api/sessions/${currentSession.id}/end`, { method: 'POST' });
+    if (!ok) { setMsg(data.error || 'تعذر إنهاء الجلسة', 'error'); return; }
+    setMsg('تم إنهاء الجلسة.', 'success');
+    stopLive();
+  }
+
+  async function downloadReport() {
+    if (!currentSession) return;
+    try {
+      const { ok, data, res } = await api(`/api/reports/session/${currentSession.id}/csv`);
+      if (!ok) { setMsg(data.error || 'تعذر تحميل التقرير', 'error'); return; }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `attendance_${currentSession.id}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setMsg('فشل الاتصال بالسيرفر', 'error');
+    }
+  }
+
+  $('btnLogin').addEventListener('click', login);
+  $('password').addEventListener('keydown', (e) => { if (e.key === 'Enter') login(); });
+  $('btnCreate').addEventListener('click', createSession);
+  $('btnEnd').addEventListener('click', endSession);
+  $('btnDownload').addEventListener('click', downloadReport);
+  $('btnLogout').addEventListener('click', logout);
+
+  // Restore state after a page refresh
+  if (jwtToken) {
+    showDashboard();
+    try {
+      const saved = JSON.parse(sessionStorage.getItem('currentSession') || 'null');
+      if (saved && saved.id) startLive(saved);
+    } catch (e) { /* ignore */ }
+  }
+</script>
+</body>
+</html>

@@ -1,246 +1,206 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>نظام الحضور الذكي - QR المتغير</title>
-    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>بوابة الطالب - نظام الحضور الذكي</title>
+  <style>
+    * { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+    [hidden] { display: none !important; }
+    body { background-color: #f4f6f9; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 20px; }
+    .card { background: #ffffff; padding: 30px; border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.08); width: 100%; max-width: 450px; text-align: center; }
+    h2 { margin-top: 0; color: #333; font-size: 22px; }
+    p.subtitle { color: #777; font-size: 13px; margin-bottom: 25px; }
+    .input-group { margin-bottom: 15px; }
+    .input-group input { width: 100%; padding: 12px; border: 1px solid #ccc; border-radius: 8px; text-align: center; font-size: 16px; outline: none; }
+    .input-group input:focus { border-color: #4f46e5; }
+    #reader { width: 100%; min-height: 280px; border-radius: 12px; overflow: hidden; background: #111; margin: 15px 0; }
+    .btn { width: 100%; background: #4f46e5; color: white; border: none; padding: 14px; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; margin-top: 8px; }
+    .btn:hover { background: #4338ca; }
+    .btn:disabled { opacity: .6; cursor: not-allowed; }
+    .btn.secondary { background: #e5e7eb; color: #333; }
+    .btn.secondary:hover { background: #d1d5db; }
+    .message { margin-top: 15px; font-weight: bold; font-size: 15px; min-height: 22px; }
+    .message.success { color: #16a34a; }
+    .message.error { color: #dc2626; }
+    .who { color: #555; font-size: 14px; margin-bottom: 5px; }
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
 </head>
-<body class="bg-slate-50 min-h-screen font-sans text-slate-800">
+<body>
 
-    <!-- Header -->
-    <header class="bg-indigo-700 text-white shadow-lg py-4 px-6 mb-6">
-        <div class="container mx-auto flex flex-col sm:flex-row justify-between items-center gap-4">
-            <div class="flex items-center gap-3">
-                <i data-lucide="qr-code" class="w-8 h-8"></i>
-                <h1 class="text-xl font-bold">نظام الحضور الذكي (Dynamic QR Attendance)</h1>
-            </div>
-            <div id="connection-status" class="bg-emerald-500 text-white text-xs font-semibold px-4 py-1.5 rounded-full flex items-center gap-2">
-                <span class="w-2 h-2 bg-white rounded-full animate-ping"></span>
-                جاري فحص الاتصال بالخادم...
-            </div>
-        </div>
-    </header>
+<div class="card">
+  <!-- Login -->
+  <div id="loginView">
+    <h2>تسجيل الحضور الطلابي</h2>
+    <p class="subtitle">سجّل الدخول ثم امسح رمز QR المعروض على شاشة المحاضر</p>
+    <div class="input-group">
+      <input type="text" id="identifier" placeholder="رقم الطالب" autocomplete="username" inputmode="text">
+    </div>
+    <div class="input-group">
+      <input type="password" id="password" placeholder="كلمة المرور" autocomplete="current-password">
+    </div>
+    <button class="btn" id="btnLogin">تسجيل الدخول</button>
+    <div id="loginMsg" class="message"></div>
+  </div>
 
-    <main class="container mx-auto px-4 pb-12">
-        <!-- Navigation Tabs -->
-        <div class="flex justify-center mb-8 gap-4">
-            <button onclick="switchTab('instructor')" id="btn-instructor" class="px-6 py-2.5 bg-indigo-600 text-white rounded-xl shadow-md font-bold transition flex items-center gap-2">
-                <i data-lucide="layout-dashboard" class="w-5 h-5"></i>
-                لوحة المحاضر
-            </button>
-            <button onclick="switchTab('student')" id="btn-student" class="px-6 py-2.5 bg-white text-indigo-600 border border-indigo-200 rounded-xl shadow-sm font-bold transition flex items-center gap-2">
-                <i data-lucide="user-check" class="w-5 h-5"></i>
-                بوابة الطالب (الـ QR المتغير)
-            </button>
-        </div>
+  <!-- Scan -->
+  <div id="scanView" hidden>
+    <h2>امسح رمز الحضور</h2>
+    <div class="who" id="whoAmI"></div>
+    <p class="subtitle">وجّه الكاميرا نحو الرمز المعروض أمام المحاضر</p>
+    <div id="reader"></div>
+    <button class="btn secondary" id="btnRescan" hidden>مسح رمز جديد</button>
+    <button class="btn secondary" id="btnLogout">تسجيل الخروج</button>
+    <div id="scanMsg" class="message"></div>
+  </div>
+</div>
 
-        <!-- Instructor Section -->
-        <div id="section-instructor" class="space-y-6">
-            
-            <!-- Statistics Cards -->
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-4">
-                    <div class="p-4 bg-indigo-50 text-indigo-600 rounded-xl"><i data-lucide="book-open" class="w-8 h-8"></i></div>
-                    <div>
-                        <p class="text-xs text-slate-500 font-medium">المواد المسجلة</p>
-                        <h3 class="text-2xl font-bold text-slate-800" id="stat-courses">4 مواد</h3>
-                    </div>
-                </div>
-                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-4">
-                    <div class="p-4 bg-emerald-50 text-emerald-600 rounded-xl"><i data-lucide="user-check" class="w-8 h-8"></i></div>
-                    <div>
-                        <p class="text-xs text-slate-500 font-medium">إجمالي نِسب الحضور</p>
-                        <h3 class="text-2xl font-bold text-slate-800" id="stat-attendance">88%</h3>
-                    </div>
-                </div>
-                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-4">
-                    <div class="p-4 bg-rose-50 text-rose-600 rounded-xl"><i data-lucide="user-x" class="w-8 h-8"></i></div>
-                    <div>
-                        <p class="text-xs text-slate-500 font-medium">حالات الغياب الموثقة</p>
-                        <h3 class="text-2xl font-bold text-slate-800" id="stat-absence">12%</h3>
-                    </div>
-                </div>
-            </div>
+<script>
+  const API_BASE_URL = 'https://qrsuluq.onrender.com';
+  const $ = (id) => document.getElementById(id);
 
-            <!-- Upload File per Course -->
-            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-                <h2 class="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
-                    <i data-lucide="upload-cloud" class="text-indigo-600"></i>
-                    رفع سجل الطلاب ومطابقته بكود المادة
-                </h2>
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                    <input type="text" id="course-code" placeholder="رمز المادة (مثال: CS101)" class="p-3 border rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none">
-                    <input type="file" id="student-file" accept=".csv, .json" class="p-2 border rounded-xl bg-slate-50 text-sm">
-                    <button onclick="uploadCourseStudents()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-3 rounded-xl font-bold transition flex justify-center items-center gap-2">
-                        <i data-lucide="file-plus"></i> رفع وتثبيت القائمة
-                    </button>
-                </div>
-                <div id="upload-status" class="text-sm font-medium"></div>
-            </div>
+  let jwtToken = sessionStorage.getItem('jwt');
+  let userName = sessionStorage.getItem('userName') || '';
+  let scanner = null;
+  let busy = false;
 
-            <!-- Generate QR & Export -->
-            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                    <h2 class="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
-                        <i data-lucide="download" class="text-emerald-600"></i>
-                        تصدير تقرير الحضور والغياب (Excel)
-                    </h2>
-                    <div class="flex gap-3">
-                        <input type="text" id="report-session-id" placeholder="أدخل معرف الجلسة" class="p-3 border rounded-xl flex-1 outline-none">
-                        <button onclick="exportCSV()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-3 rounded-xl font-bold transition">تحميل CSV</button>
-                    </div>
-                </div>
-            </div>
-        </div>
+  function setMsg(el, text, type) {
+    el.className = 'message' + (type ? ' ' + type : '');
+    el.textContent = text;
+  }
 
-        <!-- Student Section with Dynamic 5s QR Code -->
-        <div id="section-student" class="space-y-6 hidden">
-            <div class="bg-white p-8 rounded-2xl shadow-md border border-slate-100 max-w-lg mx-auto text-center space-y-6">
-                <div>
-                    <h2 class="text-xl font-bold text-slate-800 mb-1">رمز الحضور الذكي المباشر</h2>
-                    <p class="text-xs text-slate-500">يتغير كود الـ QR تلقائياً كل 5 ثوانٍ لضمان عدم التزوير</p>
-                </div>
+  function showView(name) {
+    $('loginView').hidden = name !== 'login';
+    $('scanView').hidden = name !== 'scan';
+  }
 
-                <div class="space-y-3">
-                    <input type="text" id="student-id-input" placeholder="أدخل ID الطالب الخاص بك" class="w-full p-3 border rounded-xl text-center font-mono">
-                    <input type="text" id="session-id-input" placeholder="معرف الجلسة (Session ID)" class="w-full p-3 border rounded-xl text-center font-mono">
-                </div>
+  async function api(path, options = {}) {
+    const headers = { 'Content-Type': 'application/json' };
+    if (jwtToken) headers['Authorization'] = 'Bearer ' + jwtToken;
+    const res = await fetch(API_BASE_URL + path, { ...options, headers });
+    let data = {};
+    try { data = await res.json(); } catch (e) { /* non-JSON response */ }
+    return { ok: res.ok, status: res.status, data };
+  }
 
-                <!-- QR Display Box -->
-                <div class="bg-slate-50 p-6 rounded-2xl border flex flex-col items-center justify-center relative">
-                    <div id="dynamic-qr" class="p-2 bg-white rounded-xl shadow-inner"></div>
-                    
-                    <!-- 5 Sec Progress Bar -->
-                    <div class="w-full bg-slate-200 h-2 rounded-full mt-4 overflow-hidden">
-                        <div id="progress-bar" class="bg-indigo-600 h-full w-full transition-all duration-1000"></div>
-                    </div>
-                    <span id="timer-text" class="text-xs font-bold text-indigo-600 mt-2">يتجدد خلال: 5 ثوانٍ</span>
-                </div>
+  async function login() {
+    const identifier = $('identifier').value.trim();
+    const password = $('password').value;
+    const msg = $('loginMsg');
 
-                <button onclick="manualScanSubmit()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3.5 rounded-xl font-bold shadow-md transition">تأكيد مسح الرمز وتسجيل الحضور</button>
-                <div id="scan-status" class="text-sm font-semibold"></div>
-            </div>
-        </div>
-    </main>
+    if (!identifier || !password) {
+      setMsg(msg, 'أدخل رقم الطالب وكلمة المرور', 'error');
+      return;
+    }
 
-    <script>
-        lucide.createIcons();
-        const API_URL = "https://qrsuluq.onrender.com";
-        let timerInterval = null;
-        let countdown = 5;
+    $('btnLogin').disabled = true;
+    setMsg(msg, 'جاري تسجيل الدخول...');
+    try {
+      const { ok, data } = await api('/api/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ identifier, password })
+      });
+      if (!ok) { setMsg(msg, data.error || 'فشل تسجيل الدخول', 'error'); return; }
+      if (data.user.role !== 'Student') {
+        setMsg(msg, 'هذه البوابة للطلاب فقط. استخدم صفحة المحاضر.', 'error');
+        return;
+      }
+      jwtToken = data.token;
+      userName = data.user.full_name;
+      sessionStorage.setItem('jwt', jwtToken);
+      sessionStorage.setItem('userName', userName);
+      $('password').value = '';
+      setMsg(msg, '');
+      openScanView();
+    } catch (e) {
+      setMsg(msg, 'فشل الاتصال بالسيرفر', 'error');
+    } finally {
+      $('btnLogin').disabled = false;
+    }
+  }
 
-        // Check Connection
-        fetch(API_URL)
-            .then(res => res.json())
-            .then(() => {
-                const el = document.getElementById('connection-status');
-                el.className = "bg-emerald-500 text-white text-xs font-semibold px-4 py-1.5 rounded-full flex items-center gap-2";
-                el.innerHTML = '<span class="w-2 h-2 bg-white rounded-full"></span> متصل بالسيرفر بنجاح';
-            })
-            .catch(() => {
-                const el = document.getElementById('connection-status');
-                el.className = "bg-rose-500 text-white text-xs font-semibold px-4 py-1.5 rounded-full flex items-center gap-2";
-                el.innerHTML = '<span class="w-2 h-2 bg-white rounded-full animate-bounce"></span> فشل الاتصال بالسيرفر';
-            });
+  function logout() {
+    stopScanner();
+    jwtToken = null;
+    sessionStorage.removeItem('jwt');
+    sessionStorage.removeItem('userName');
+    showView('login');
+  }
 
-        function switchTab(tab) {
-            if(tab === 'instructor') {
-                document.getElementById('section-instructor').classList.remove('hidden');
-                document.getElementById('section-student').classList.add('hidden');
-                document.getElementById('btn-instructor').className = "px-6 py-2.5 bg-indigo-600 text-white rounded-xl shadow-md font-bold transition flex items-center gap-2";
-                document.getElementById('btn-student').className = "px-6 py-2.5 bg-white text-indigo-600 border border-indigo-200 rounded-xl shadow-sm font-bold transition flex items-center gap-2";
-                clearInterval(timerInterval);
-            } else {
-                document.getElementById('section-student').classList.remove('hidden');
-                document.getElementById('section-instructor').classList.add('hidden');
-                document.getElementById('btn-student').className = "px-6 py-2.5 bg-indigo-600 text-white rounded-xl shadow-md font-bold transition flex items-center gap-2";
-                document.getElementById('btn-instructor').className = "px-6 py-2.5 bg-white text-indigo-600 border border-indigo-200 rounded-xl shadow-sm font-bold transition flex items-center gap-2";
-                startDynamicQR();
-            }
-        }
+  function openScanView() {
+    $('whoAmI').textContent = 'مرحباً ' + userName;
+    showView('scan');
+    startScanner();
+  }
 
-        // Dynamic 5-Second QR Generator
-        function startDynamicQR() {
-            updateQR();
-            clearInterval(timerInterval);
-            countdown = 5;
-            
-            timerInterval = setInterval(() => {
-                countdown--;
-                document.getElementById('timer-text').innerText = `يتجدد خلال: ${countdown} ثوانٍ`;
-                document.getElementById('progress-bar').style.width = `${(countdown / 5) * 100}%`;
+  async function startScanner() {
+    busy = false;
+    $('btnRescan').hidden = true;
+    setMsg($('scanMsg'), '');
+    if (!scanner) scanner = new Html5Qrcode('reader');
+    try {
+      await scanner.start(
+        { facingMode: 'environment' },
+        { fps: 10, qrbox: { width: 240, height: 240 } },
+        onScanSuccess,
+        () => {}
+      );
+    } catch (e) {
+      setMsg($('scanMsg'), 'تعذر تشغيل الكاميرا. اسمح باستخدامها وتأكد أن الصفحة تعمل عبر HTTPS.', 'error');
+      $('btnRescan').hidden = false;
+    }
+  }
 
-                if(countdown <= 0) {
-                    updateQR();
-                    countdown = 5;
-                }
-            }, 1000);
-        }
+  async function stopScanner() {
+    try {
+      if (scanner && scanner.isScanning) await scanner.stop();
+    } catch (e) { /* already stopped */ }
+  }
 
-        function updateQR() {
-            const studentId = document.getElementById('student-id-input').value || "DEMO-STUDENT";
-            const sessionId = document.getElementById('session-id-input').value || "SESSION-101";
-            const dynamicToken = `${sessionId}_${studentId}_${Date.now()}`;
-            
-            const qrContainer = document.getElementById('dynamic-qr');
-            qrContainer.innerHTML = "";
-            new QRCode(qrContainer, {
-                text: dynamicToken,
-                width: 180,
-                height: 180
-            });
-        }
+  async function onScanSuccess(text) {
+    if (busy) return;
+    busy = true;
+    await stopScanner();
 
-        // Upload File per Course
-        async function uploadCourseStudents() {
-            const courseCode = document.getElementById('course-code').value;
-            const fileInput = document.getElementById('student-file');
-            const statusDiv = document.getElementById('upload-status');
+    let payload = null;
+    try { payload = JSON.parse(text); } catch (e) { /* not our QR */ }
 
-            if(!courseCode || !fileInput.files[0]) {
-                return alert("الرجاء إدخال كود المادة واختيار ملف الطلاب أولاً");
-            }
+    const msg = $('scanMsg');
+    if (!payload || !payload.s || !payload.t) {
+      setMsg(msg, 'رمز QR غير صالح', 'error');
+      $('btnRescan').hidden = false;
+      return;
+    }
 
-            statusDiv.className = "text-indigo-600 mt-2";
-            statusDiv.innerText = "جاري معالجة الملف ورفعه للخادم...";
+    setMsg(msg, 'جاري تسجيل الحضور...');
+    try {
+      const { ok, status, data } = await api('/api/attendance/scan', {
+        method: 'POST',
+        body: JSON.stringify({ session_id: payload.s, token: payload.t })
+      });
 
-            setTimeout(() => {
-                statusDiv.className = "text-emerald-600 mt-2";
-                statusDiv.innerText = `تم ربط الملف بنجاح للمادة (${courseCode})`;
-            }, 1500);
-        }
+      if (status === 401) { logout(); setMsg($('loginMsg'), 'انتهت الجلسة، سجّل الدخول من جديد', 'error'); return; }
 
-        function exportCSV() {
-            const sessionId = document.getElementById('report-session-id').value;
-            if(!sessionId) return alert("الرجاء إدخال معرف الجلسة");
-            window.open(`${API_URL}/api/reports/session/${sessionId}/csv`, '_blank');
-        }
+      if (ok) {
+        setMsg(msg, data.message || 'تم تسجيل الحضور بنجاح!', 'success');
+      } else {
+        setMsg(msg, data.error || 'تعذر تسجيل الحضور', 'error');
+        // Allow retry unless it's a duplicate
+        if (status !== 409) $('btnRescan').hidden = false;
+      }
+    } catch (e) {
+      setMsg(msg, 'فشل الاتصال بالسيرفر', 'error');
+      $('btnRescan').hidden = false;
+    }
+  }
 
-        async function manualScanSubmit() {
-            const student_id = document.getElementById('student-id-input').value;
-            const session_id = document.getElementById('session-id-input').value;
-            const statusDiv = document.getElementById('scan-status');
+  $('btnLogin').addEventListener('click', login);
+  $('password').addEventListener('keydown', (e) => { if (e.key === 'Enter') login(); });
+  $('btnRescan').addEventListener('click', startScanner);
+  $('btnLogout').addEventListener('click', logout);
 
-            if(!student_id || !session_id) return alert("أدخل بيانات الطالب والجلسة بشكل كامل");
-
-            const res = await fetch(`${API_URL}/api/attendance/scan`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ student_id, session_id })
-            });
-
-            const data = await res.json();
-            if(res.ok) {
-                statusDiv.className = "text-emerald-600 mt-3 font-bold";
-                statusDiv.innerText = data.message || "تم تسجيل حضورك بنجاح بنسبة أمان عالية!";
-            } else {
-                statusDiv.className = "text-rose-600 mt-3 font-bold";
-                statusDiv.innerText = data.error || "تعذر تسجيل الحضور";
-            }
-        }
-    </script>
+  if (jwtToken) openScanView(); else showView('login');
+</script>
 </body>
 </html>
