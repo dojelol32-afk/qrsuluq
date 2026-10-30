@@ -28,7 +28,6 @@ app.get('/', (req, res) => {
 // ==========================================
 // 1. مسار رفع سجل الطلاب دفعة واحدة (Bulk Import)
 // ==========================================
-// استجابة GET إرشادية لتجنب خطأ المتصفح
 app.get('/api/users/bulk-import', (req, res) => {
   res.json({ 
     info: "هذا المسار مخصص لرفع بيانات الطلاب ويستقبل طلبات من نوع POST.",
@@ -67,14 +66,13 @@ app.post('/api/users/bulk-import', async (req, res) => {
 // ==========================================
 // 2. مسار تسجيل الحضور الفعلي عبر مسح الرمز (QR Scan)
 // ==========================================
-// استجابة GET إرشادية لتجنب خطأ المتصفح
 app.get('/api/attendance/scan', (req, res) => {
   res.json({ 
     info: "هذا المسار مخصص لتسجيل الحضور ويستقبل طلبات من نوع POST.",
     method: "POST",
     example_body: {
-      student_id: "UUID-خاص-بالطالب",
-      session_id: "UUID-الجلسة"
+      student_id: "معرف الطالب (أو البريد الإلكتروني/رقم القيد حسب تصميم الجدول)",
+      session_id: "cs101"
     }
   });
 });
@@ -83,10 +81,11 @@ app.post('/api/attendance/scan', async (req, res) => {
   try {
     const { student_id, session_id } = req.body;
     
+    // التحقق من الجلسة بناءً على اسم العمود الصحيح session_id
     const { data: session, error: sessionError } = await supabase
       .from('qr_sessions')
       .select('*')
-      .eq('id', session_id)
+      .eq('session_id', session_id)
       .single();
 
     if (sessionError || !session) {
@@ -104,6 +103,7 @@ app.post('/api/attendance/scan', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
 // ==========================================
 // 3. مسار تصدير تقرير الحضور والغياب بصيغة CSV (Excel)
 // ==========================================
@@ -123,7 +123,7 @@ app.get('/api/reports/session/:session_id/csv', async (req, res) => {
     if (error) throw error;
 
     let csvHeader = 'Student Name,Email,Department,Year,Status,Time\n';
-    let csvRows = records.map(r => {
+    let csvRows = (records || []).map(r => {
       const u = r.users || {};
       return `"${u.name || 'N/A'}","${u.email || 'N/A'}","${u.department || 'N/A'}","${u.academic_year || 'N/A'}","${r.status}","${r.timestamp}"`;
     }).join('\n');
@@ -137,4 +137,10 @@ app.get('/api/reports/session/:session_id/csv', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// تشغيل الخادم
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Server is running on port ${PORT}`);
 });
