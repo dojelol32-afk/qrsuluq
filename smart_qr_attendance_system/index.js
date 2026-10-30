@@ -104,7 +104,6 @@ app.post('/api/attendance/scan', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-
 // ==========================================
 // 3. مسار تصدير تقرير الحضور والغياب بصيغة CSV (Excel)
 // ==========================================
@@ -115,17 +114,19 @@ app.get('/api/reports/session/:session_id/csv', async (req, res) => {
     const { data: records, error } = await supabase
       .from('attendance_records')
       .select(`
-        *,
-        users (name, email, department, academic_year)
+        status,
+        timestamp,
+        users:student_id (name, email, department, academic_year)
       `)
       .eq('session_id', session_id);
 
     if (error) throw error;
 
     let csvHeader = 'Student Name,Email,Department,Year,Status,Time\n';
-    let csvRows = records.map(r => 
-      `"${r.users?.name || 'N/A'}","${r.users?.email || 'N/A'}","${r.users?.department || 'N/A'}","${r.users?.academic_year || 'N/A'}","${r.status}","${r.timestamp}"`
-    ).join('\n');
+    let csvRows = records.map(r => {
+      const u = r.users || {};
+      return `"${u.name || 'N/A'}","${u.email || 'N/A'}","${u.department || 'N/A'}","${u.academic_year || 'N/A'}","${r.status}","${r.timestamp}"`;
+    }).join('\n');
 
     const csvOutput = csvHeader + csvRows;
 
@@ -136,10 +137,4 @@ app.get('/api/reports/session/:session_id/csv', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
-});
-
-// تشغيل الخادم
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
 });
