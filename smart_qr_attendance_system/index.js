@@ -1,6 +1,7 @@
 const config = require('./config'); // loads .env and validates required variables first
 const express = require('express');
 const cors = require('cors');
+const path = require('path');
 const rateLimit = require('express-rate-limit');
 
 const { authenticate, requireRole } = require('./authMiddleware');
@@ -50,8 +51,10 @@ const scanLimiter = rateLimit({
     message: { error: 'محاولات كثيرة. انتظر دقيقة.' }
 });
 
-app.get('/', (req, res) => res.json({ message: 'Smart QR Attendance API is running.' }));
 
+app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
+app.get('/teacher.html', (req, res) => res.sendFile(path.join(__dirname, 'teacher.html')));
+app.get('/api/health', (req, res) => res.json({ message: 'Smart QR Attendance API is running.' }));
 // Auth
 app.post('/api/auth/login', loginLimiter, login);
 
